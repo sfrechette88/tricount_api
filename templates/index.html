@@ -12,8 +12,34 @@
 
 <div class="container-fluid py-3">
 
+  <!-- LOGIN SCREEN -->
+  <div id="login-screen">
+    <div class="row justify-content-center">
+      <div class="col-md-5 col-lg-4">
+        <div class="text-center mb-4">
+          <i class="bi bi-shield-lock display-1 text-primary mb-2"></i>
+          <h2>Tricount Web</h2>
+        </div>
+        <div class="card shadow">
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label">Mot de passe</label>
+              <input type="password" id="login-password" class="form-control" onkeydown="if(event.key==='Enter')doLogin()">
+            </div>
+            <div class="mb-3 form-check">
+              <input type="checkbox" class="form-check-input" id="login-remember" checked>
+              <label class="form-check-label" for="login-remember">Se souvenir de moi</label>
+            </div>
+            <div id="login-error" class="text-danger small mb-2 d-none"></div>
+            <button class="btn btn-primary w-100" onclick="doLogin()">Connexion</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- CONNECT SCREEN (list of saved tricounts + add form) -->
-  <div id="connect-screen">
+  <div id="connect-screen" class="d-none">
     <div class="row justify-content-center">
       <div class="col-md-8 col-lg-6">
         <div class="text-center mb-4">
@@ -70,6 +96,9 @@
         </button>
         <button class="btn btn-outline-danger" onclick="disconnect()">
           <i class="bi bi-box-arrow-right me-1"></i>D&eacute;connexion
+        </button>
+        <button class="btn btn-outline-warning" onclick="doLogout()" title="Verrouiller">
+          <i class="bi bi-lock"></i>
         </button>
       </div>
     </div>
@@ -360,8 +389,58 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  loadConnections();
+  checkAuth();
 });
+
+function checkAuth() {
+  fetch('/api/auth/check')
+    .then(r => r.json())
+    .then(data => {
+      if (data.authenticated) {
+        document.getElementById('login-screen').classList.add('d-none');
+        document.getElementById('connect-screen').classList.remove('d-none');
+        loadConnections();
+      } else {
+        document.getElementById('login-screen').classList.remove('d-none');
+        document.getElementById('connect-screen').classList.add('d-none');
+        document.getElementById('main-screen').classList.add('d-none');
+      }
+    })
+    .catch(() => {
+      document.getElementById('login-screen').classList.remove('d-none');
+    });
+}
+
+function doLogin() {
+  const password = document.getElementById('login-password').value;
+  const remember = document.getElementById('login-remember').checked ? '1' : '0';
+  const form = new FormData();
+  form.append('password', password);
+  form.append('remember_me', remember);
+  document.getElementById('login-error').classList.add('d-none');
+  fetch('/api/auth/login', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.error || 'Erreur');
+      document.getElementById('login-screen').classList.add('d-none');
+      document.getElementById('connect-screen').classList.remove('d-none');
+      document.getElementById('login-password').value = '';
+      loadConnections();
+    })
+    .catch(e => {
+      document.getElementById('login-error').textContent = e.message;
+      document.getElementById('login-error').classList.remove('d-none');
+    });
+}
+
+function doLogout() {
+  fetch('/api/auth/logout', { method: 'POST' })
+    .then(() => {
+      document.getElementById('connect-screen').classList.add('d-none');
+      document.getElementById('main-screen').classList.add('d-none');
+      document.getElementById('login-screen').classList.remove('d-none');
+    });
+}
 
 // --- LOADING OVERLAY ---
 function showLoading(text) {

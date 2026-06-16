@@ -8,6 +8,7 @@ services:
       - ./data:/app/data
     environment:
       - DATA_DIR=/app/data
+      - APP_PASSWORD=${APP_PASSWORD}
       - FLASK_DEBUG=0
-      - TZ=Europe/Paris
+      - TZ=America/Montreal
     restart: unless-stopped

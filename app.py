@@ -1,8 +1,9 @@
+import ipaddress
 import json
 import re
 import threading
 import traceback
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from functools import wraps
 from pathlib import Path
 
@@ -14,17 +15,50 @@ from flask import (
 from tricount_manager import TricountManager
 from recurring_manager import RecurringManager
 from connection_manager import ConnectionManager
-from config import SECRET_KEY, DEBUG, CREDENTIALS_PATH
+from config import SECRET_KEY, DEBUG, CREDENTIALS_PATH, APP_PASSWORD, PERMANENT_SESSION_LIFETIME_DAYS
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.debug = DEBUG
+app.permanent_session_lifetime = timedelta(days=PERMANENT_SESSION_LIFETIME_DAYS)
 
 manager = TricountManager()
 rec_manager = RecurringManager()
 conn_manager = ConnectionManager()
 
 _lock = threading.Lock()
+
+LAN_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("192.168.2.0/24"),
+]
+
+
+def _is_lan():
+    addr = request.remote_addr
+    if not addr:
+        return False
+    try:
+        ip = ipaddress.ip_address(addr)
+        return any(ip in net for net in LAN_NETWORKS)
+    except ValueError:
+        return False
+
+
+def _is_auth():
+    return not APP_PASSWORD or _is_lan() or session.get("_auth")
+
+
+def require_app_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if _is_auth():
+            return f(*args, **kwargs)
+        if request.is_json:
+            return jsonify({"error": "Unauthorized"}), 401
+        flash("Veuillez vous connecter", "warning")
+        return redirect(url_for("index"))
+    return decorated
 
 
 def require_tricount(f):
@@ -133,9 +167,35 @@ def _execute_recurring(rec):
         )
 
 
+# ---------- Auth ----------
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    password = request.form.get("password", "")
+    if not APP_PASSWORD:
+        return jsonify({"error": "Aucun mot de passe configuré"}), 500
+    if password != APP_PASSWORD:
+        return jsonify({"error": "Mot de passe incorrect"}), 403
+    session.permanent = request.form.get("remember_me") == "1"
+    session["_auth"] = True
+    return jsonify({"success": True})
+
+
+@app.route("/api/auth/check")
+def api_auth_check():
+    return jsonify({"authenticated": _is_auth()})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_auth_logout():
+    session.clear()
+    return jsonify({"success": True})
+
+
 # ---------- Routes ----------
 
 @app.route("/api/debug-token")
+@require_app_auth
 def api_debug_token():
     """Debug a specific token: shows what the API returns."""
     raw = request.args.get("token", "").strip()
@@ -164,6 +224,7 @@ def api_debug_token():
 
 
 @app.route("/api/diagnostic")
+@require_app_auth
 def api_diagnostic():
     """Test API connectivity and return debug info. Destroys stale credentials if needed."""
     import sys
@@ -213,6 +274,7 @@ def index():
 
 
 @app.route("/api/connect", methods=["POST"])
+@require_app_auth
 def api_connect():
     raw_token = request.form.get("token", "").strip()
     if not raw_token:
@@ -242,6 +304,7 @@ def api_connect():
 
 
 @app.route("/api/disconnect", methods=["POST"])
+@require_app_auth
 def api_disconnect():
     session.pop("tricount_token", None)
     session.pop("tricount_title", None)
@@ -250,6 +313,7 @@ def api_disconnect():
 
 
 @app.route("/api/data")
+@require_app_auth
 @require_tricount
 def api_data():
     try:
@@ -268,6 +332,7 @@ def api_data():
 
 
 @app.route("/api/transaction/create", methods=["POST"])
+@require_app_auth
 @require_tricount
 def api_create_transaction():
     description = request.form.get("description", "").strip()
@@ -336,6 +401,7 @@ def api_create_transaction():
 
 
 @app.route("/api/transaction/edit", methods=["POST"])
+@require_app_auth
 @require_tricount
 def api_edit_transaction():
     tx_id = request.form.get("transaction_id", "")
@@ -371,6 +437,7 @@ def api_edit_transaction():
 
 
 @app.route("/api/transaction/delete", methods=["POST"])
+@require_app_auth
 @require_tricount
 def api_delete_transaction():
     tx_id = request.form.get("transaction_id", "")
@@ -390,6 +457,7 @@ def api_delete_transaction():
 
 
 @app.route("/api/members/add", methods=["POST"])
+@require_app_auth
 @require_tricount
 def api_add_members():
     names_raw = request.form.get("names", "")
@@ -408,6 +476,7 @@ def api_add_members():
 
 
 @app.route("/api/members/rename", methods=["POST"])
+@require_app_auth
 @require_tricount
 def api_rename_member():
     member_uuid = request.form.get("member_uuid", "")
@@ -430,6 +499,7 @@ def api_rename_member():
 
 
 @app.route("/api/members/delete", methods=["POST"])
+@require_app_auth
 @require_tricount
 def api_delete_member():
     member_uuid = request.form.get("member_uuid", "")
@@ -453,6 +523,7 @@ def api_delete_member():
 # ---------- Recurring routes ----------
 
 @app.route("/api/recurring/list")
+@require_app_auth
 @require_tricount
 def api_recurring_list():
     token = session["tricount_token"]
@@ -461,6 +532,7 @@ def api_recurring_list():
 
 
 @app.route("/api/recurring/create", methods=["POST"])
+@require_app_auth
 @require_tricount
 def api_recurring_create():
     token = session["tricount_token"]
@@ -537,6 +609,7 @@ def api_recurring_create():
 
 
 @app.route("/api/recurring/edit", methods=["POST"])
+@require_app_auth
 @require_tricount
 def api_recurring_edit():
     rec_id = request.form.get("recurring_id", "")
@@ -596,6 +669,7 @@ def api_recurring_edit():
 
 
 @app.route("/api/recurring/delete", methods=["POST"])
+@require_app_auth
 @require_tricount
 def api_recurring_delete():
     rec_id = request.form.get("recurring_id", "")
@@ -609,6 +683,7 @@ def api_recurring_delete():
 
 
 @app.route("/api/recurring/logs")
+@require_app_auth
 @require_tricount
 def api_recurring_logs():
     rec_id = request.args.get("recurring_id")
@@ -619,11 +694,13 @@ def api_recurring_logs():
 # ---------- Connection Management ----------
 
 @app.route("/api/connections/list")
+@require_app_auth
 def api_connections_list():
     return jsonify({"connections": conn_manager.list_all()})
 
 
 @app.route("/api/connections/add", methods=["POST"])
+@require_app_auth
 def api_connections_add():
     name = request.form.get("name", "").strip()
     token_raw = request.form.get("token", "").strip()
@@ -640,6 +717,7 @@ def api_connections_add():
 
 
 @app.route("/api/connections/edit", methods=["POST"])
+@require_app_auth
 def api_connections_edit():
     rec_id = request.form.get("id", "")
     name = request.form.get("name", "").strip()
@@ -663,6 +741,7 @@ def api_connections_edit():
 
 
 @app.route("/api/connections/delete", methods=["POST"])
+@require_app_auth
 def api_connections_delete():
     rec_id = request.form.get("id", "")
     if not rec_id:
