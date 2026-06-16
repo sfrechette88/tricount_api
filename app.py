@@ -34,8 +34,12 @@ _lock = threading.Lock()
 
 LAN_NETWORKS = [
     ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("192.168.2.0/24"),
 ]
+
+LAN_EXCLUDE = {
+    ipaddress.ip_address("10.0.10.110"),
+    ipaddress.ip_address("192.168.2.149"),
+}
 
 
 def _is_lan():
@@ -44,6 +48,8 @@ def _is_lan():
         return False
     try:
         ip = ipaddress.ip_address(addr)
+        if ip in LAN_EXCLUDE:
+            return False
         return any(ip in net for net in LAN_NETWORKS)
     except ValueError:
         return False
