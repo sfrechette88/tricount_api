@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="fr" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tricount Web</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+
+<div class="container-fluid py-3">
+
+  <!-- CONNECT SCREEN (list of saved tricounts + add form) -->
+  <div id="connect-screen">
+    <div class="row justify-content-center">
+      <div class="col-md-8 col-lg-6">
+        <div class="text-center mb-4">
+          <i class="bi bi-wallet2 display-1 text-primary mb-2"></i>
+          <h2>Tricount Web</h2>
+          <p class="text-muted">G&eacute;rez vos tricounts depuis le navigateur</p>
+        </div>
+
+        <!-- Add new form -->
+        <div class="card shadow mb-3">
+          <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-plus-circle me-2"></i>Ajouter un tricount</h5>
+            <div class="row g-2">
+              <div class="col-md-4">
+                <input type="text" id="new-conn-name" class="form-control" placeholder="Nom (ex: Famille)">
+              </div>
+              <div class="col-md-6">
+                <input type="text" id="new-conn-token" class="form-control" placeholder="Lien ou token de partage">
+              </div>
+              <div class="col-md-2">
+                <button class="btn btn-primary w-100" onclick="addConnection()">
+                  <i class="bi bi-plus-lg"></i>
+                </button>
+              </div>
+            </div>
+            <div id="add-error" class="text-danger small mt-1 d-none"></div>
+          </div>
+        </div>
+
+        <!-- Saved connections list -->
+        <div id="connections-list"></div>
+
+        <!-- Error / diagnostic -->
+        <div id="connect-error" class="alert alert-danger mt-3 d-none"></div>
+        <div id="diagnostic-result" class="mt-3 d-none">
+          <pre class="text-start small text-muted" style="max-height:200px;overflow:auto" id="diagnostic-text"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN SCREEN (dashboard for a connected tricount) -->
+  <div id="main-screen" class="d-none">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <button class="btn btn-sm btn-outline-secondary me-2" onclick="backToConnections()" title="Retour">
+          <i class="bi bi-arrow-left"></i>
+        </button>
+        <span><strong id="tricount-title"></strong> <small class="text-muted" id="tricount-currency"></small></span>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" onclick="refreshData()" title="Rafra&icirc;chir">
+          <i class="bi bi-arrow-clockwise"></i>
+        </button>
+        <button class="btn btn-outline-danger" onclick="disconnect()">
+          <i class="bi bi-box-arrow-right me-1"></i>D&eacute;connexion
+        </button>
+      </div>
+    </div>
+
+    <ul class="nav nav-tabs mb-3" id="main-tabs">
+      <li class="nav-item"><button class="nav-link active" data-bs-target="#tab-transactions">D&eacute;penses</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-target="#tab-balances">Soldes</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-target="#tab-members">Membres</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-target="#tab-recurring">R&eacute;currentes</button></li>
+    </ul>
+
+    <div class="tab-content">
+      <div class="tab-pane active" id="tab-transactions">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">D&eacute;penses</h5>
+          <button class="btn btn-success" onclick="showAddTxModal()"><i class="bi bi-plus-circle me-1"></i>Ajouter</button>
+        </div>
+        <div id="transactions-list" class="list-group"></div>
+      </div>
+
+      <div class="tab-pane" id="tab-balances">
+        <h5 class="mb-3">Soldes</h5>
+        <div id="balances-list" class="list-group"></div>
+      </div>
+
+      <div class="tab-pane" id="tab-members">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">Membres</h5>
+          <button class="btn btn-success btn-sm" onclick="showAddMemberModal()"><i class="bi bi-person-plus me-1"></i>Ajouter</button>
+        </div>
+        <div id="members-list" class="list-group"></div>
+      </div>
+
+      <div class="tab-pane" id="tab-recurring">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">D&eacute;penses r&eacute;currentes</h5>
+          <button class="btn btn-success" onclick="showAddRecurringModal()"><i class="bi bi-plus-circle me-1"></i>Ajouter</button>
+        </div>
+        <div id="recurring-list" class="list-group"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Connection edit modal -->
+<div class="modal fade" id="connModal" tabindex="-1">
+<div class="modal-dialog">
+<div class="modal-content">
+  <div class="modal-header">
+    <h5 class="modal-title">Modifier le tricount</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+  </div>
+  <div class="modal-body">
+    <input type="hidden" id="conn-edit-id">
+    <div class="mb-3">
+      <label class="form-label">Nom</label>
+      <input type="text" id="conn-edit-name" class="form-control">
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Lien ou token</label>
+      <input type="text" id="conn-edit-token" class="form-control">
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-danger me-auto" onclick="deleteConnection()"><i class="bi bi-trash me-1"></i>Supprimer</button>
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+    <button class="btn btn-primary" onclick="saveEditConnection()">Enregistrer</button>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- Transaction modal -->
+<div class="modal fade" id="txModal" tabindex="-1">
+<div class="modal-dialog modal-lg">
+<div class="modal-content">
+  <div class="modal-header">
+    <h5 class="modal-title" id="txModalTitle">Nouvelle d&eacute;pense</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+  </div>
+  <div class="modal-body">
+    <input type="hidden" id="tx-edit-id">
+    <div class="mb-3">
+      <label class="form-label">Description</label>
+      <input type="text" id="tx-description" class="form-control" required>
+    </div>
+    <div class="row mb-3">
+      <div class="col">
+        <label class="form-label">Montant</label>
+        <input type="number" id="tx-amount" class="form-control" step="0.01" min="0" required>
+      </div>
+      <div class="col">
+        <label class="form-label">Date</label>
+        <input type="date" id="tx-date" class="form-control">
+      </div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Payeur</label>
+      <select id="tx-payer" class="form-select"></select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Mode de r&eacute;partition</label>
+      <select id="tx-split-mode" class="form-select" onchange="toggleSplitMode()">
+        <option value="equal">Part &eacute;gale</option>
+        <option value="reimbursement">Remboursement</option>
+      </select>
+    </div>
+    <div class="mb-3" id="tx-participants-block">
+      <label class="form-label">Participants</label>
+      <div id="tx-participants-list" class="d-flex flex-wrap gap-2"></div>
+    </div>
+    <div class="mb-3" id="tx-receiver-block" style="display:none">
+      <label class="form-label">B&eacute;n&eacute;ficiaire</label>
+      <select id="tx-receiver" class="form-select"></select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Cat&eacute;gorie</label>
+      <select id="tx-category" class="form-select">
+        <option value="">Aucune</option>
+        <option value="TRAVEL">Voyage</option>
+        <option value="ENTERTAINMENT">Loisirs</option>
+        <option value="GROCERIES">Courses</option>
+        <option value="HEALTHCARE">Sant&eacute;</option>
+        <option value="INSURANCE">Assurance</option>
+        <option value="RENT_AND_UTILITIES">Loyer &amp; Charges</option>
+        <option value="FOOD_AND_DRINK">Restaurant</option>
+        <option value="SHOPPING">Shopping</option>
+        <option value="TRANSPORT">Transport</option>
+        <option value="OTHER">Autre</option>
+      </select>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-danger me-auto d-none" id="tx-delete-btn" onclick="deleteTx()"><i class="bi bi-trash me-1"></i>Supprimer</button>
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+    <button class="btn btn-primary" onclick="saveTx()"><i class="bi bi-check-lg me-1"></i><span id="tx-save-label">Ajouter</span></button>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- Member modals -->
+<div class="modal fade" id="memberModal" tabindex="-1">
+<div class="modal-dialog">
+<div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Ajouter des membres</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="mb-3">
+      <label class="form-label">Noms (s&eacute;par&eacute;s par des virgules)</label>
+      <input type="text" id="member-names" class="form-control" placeholder="Alice, Bob, Charlie">
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+    <button class="btn btn-primary" onclick="addMembers()">Ajouter</button>
+  </div>
+</div>
+</div>
+</div>
+
+<div class="modal fade" id="renameModal" tabindex="-1">
+<div class="modal-dialog">
+<div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Renommer le membre</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <input type="hidden" id="rename-uuid">
+    <div class="mb-3"><label class="form-label">Nouveau nom</label><input type="text" id="rename-name" class="form-control"></div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+    <button class="btn btn-primary" onclick="renameMember()">Renommer</button>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- Recurring modal -->
+<div class="modal fade" id="recurringModal" tabindex="-1">
+<div class="modal-dialog modal-lg">
+<div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="recModalTitle">Nouvelle d&eacute;pense r&eacute;currente</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <input type="hidden" id="rec-edit-id">
+    <div class="mb-3"><label class="form-label">Description</label><input type="text" id="rec-description" class="form-control"></div>
+    <div class="row mb-3">
+      <div class="col"><label class="form-label">Montant</label><input type="number" id="rec-amount" class="form-control" step="0.01" min="0"></div>
+      <div class="col"><label class="form-label">Date de d&eacute;but</label><input type="date" id="rec-start-date" class="form-control"></div>
+    </div>
+    <div class="mb-3"><label class="form-label">Payeur</label><select id="rec-payer" class="form-select"></select></div>
+    <div class="row mb-3">
+      <div class="col"><label class="form-label">Fr&eacute;quence</label>
+        <select id="rec-frequency" class="form-select" onchange="toggleRecFrequency()">
+          <option value="daily">Quotidienne</option>
+          <option value="weekly">Hebdomadaire</option>
+          <option value="biweekly">Bi-hebdomadaire</option>
+          <option value="monthly" selected>Mensuelle</option>
+        </select>
+      </div>
+      <div class="col"><label class="form-label">Intervalle</label><input type="number" id="rec-interval" class="form-control" value="1" min="1"></div>
+    </div>
+    <div class="mb-3" id="rec-day-of-week-block" style="display:none">
+      <label class="form-label">Jour de la semaine</label>
+      <select id="rec-day-of-week" class="form-select">
+        <option value="0">Lundi</option>
+        <option value="1">Mardi</option>
+        <option value="2">Mercredi</option>
+        <option value="3">Jeudi</option>
+        <option value="4">Vendredi</option>
+        <option value="5">Samedi</option>
+        <option value="6">Dimanche</option>
+      </select>
+    </div>
+    <div class="mb-3" id="rec-day-of-month-block" style="display:none">
+      <label class="form-label">Jour du mois</label>
+      <select id="rec-day-of-month" class="form-select">
+      </select>
+    </div>
+    <div class="mb-3" id="rec-participants-block">
+      <label class="form-label">Participants</label>
+      <div id="rec-participants-list" class="d-flex flex-wrap gap-2"></div>
+    </div>
+    <div class="mb-3"><label class="form-label">R&eacute;partition</label>
+      <select id="rec-split-mode" class="form-select" onchange="toggleRecSplitMode()">
+        <option value="equal">Part &eacute;gale</option>
+      </select>
+    </div>
+    <div class="mb-3"><label class="form-label">Cat&eacute;gorie</label>
+      <select id="rec-category" class="form-select">
+        <option value="">Aucune</option>
+        <option value="TRAVEL">Voyage</option>
+        <option value="ENTERTAINMENT">Loisirs</option>
+        <option value="GROCERIES">Courses</option>
+        <option value="HEALTHCARE">Sant&eacute;</option>
+        <option value="INSURANCE">Assurance</option>
+        <option value="RENT_AND_UTILITIES">Loyer</option>
+        <option value="FOOD_AND_DRINK">Restaurant</option>
+        <option value="SHOPPING">Shopping</option>
+        <option value="TRANSPORT">Transport</option>
+        <option value="OTHER">Autre</option>
+      </select>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-danger me-auto d-none" id="rec-delete-btn" onclick="deleteRecurring()"><i class="bi bi-trash me-1"></i>Supprimer</button>
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+    <button class="btn btn-primary" onclick="saveRecurring()"><i class="bi bi-check-lg me-1"></i><span id="rec-save-label">Ajouter</span></button>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay" class="d-none" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center">
+  <div class="text-center">
+    <div class="spinner-border text-light" style="width:3rem;height:3rem" role="status"></div>
+    <div class="text-light mt-2" id="loading-text">Connexion...</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="toast" class="toast" role="alert">
+    <div class="toast-header"><i class="bi bi-info-circle me-2"></i><strong class="me-auto">Tricount</strong><button type="button" class="btn-close" data-bs-dismiss="toast"></button></div>
+    <div class="toast-body" id="toast-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let currentData = { members: [], transactions: [], balances: {} };
+let bsToast, txModal, memberModal, renameModal, recurringModal, connModal;
+let editingConnId = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  bsToast = new bootstrap.Toast(document.getElementById('toast'));
+  txModal = new bootstrap.Modal(document.getElementById('txModal'));
+  memberModal = new bootstrap.Modal(document.getElementById('memberModal'));
+  renameModal = new bootstrap.Modal(document.getElementById('renameModal'));
+  recurringModal = new bootstrap.Modal(document.getElementById('recurringModal'));
+  connModal = new bootstrap.Modal(document.getElementById('connModal'));
+
+  document.querySelectorAll('#main-tabs .nav-link').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#main-tabs .nav-link').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelector(btn.getAttribute('data-bs-target')).classList.add('active');
+    });
+  });
+
+  loadConnections();
+});
+
+// --- LOADING OVERLAY ---
+function showLoading(text) {
+  document.getElementById('loading-overlay').classList.remove('d-none');
+  if (text) document.getElementById('loading-text').textContent = text;
+}
+function hideLoading() {
+  document.getElementById('loading-overlay').classList.add('d-none');
+}
+
+// --- HELPERS ---
+function showToast(msg, type='info') {
+  const el = document.getElementById('toast');
+  el.classList.remove('bg-danger', 'bg-success', 'bg-warning');
+  if (type === 'error') el.classList.add('bg-danger');
+  else if (type === 'success') el.classList.add('bg-success');
+  else if (type === 'warning') el.classList.add('bg-warning');
+  document.getElementById('toast-body').textContent = msg;
+  bsToast.show();
+}
+
+function showError(elId, msg) {
+  const el = document.getElementById(elId);
+  if (msg) { el.textContent = msg; el.classList.remove('d-none'); }
+  else { el.classList.add('d-none'); }
+}
+
+function escHtml(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// --- CONNECTION MANAGEMENT ---
+function loadConnections() {
+  fetch('/api/connections/list')
+    .then(r => r.json())
+    .then(data => {
+      const container = document.getElementById('connections-list');
+      const list = data.connections || [];
+      if (list.length === 0) {
+        container.innerHTML = '<div class="text-muted text-center py-4">Aucun tricount enregistr&eacute;. Ajoutez-en un ci-dessus.</div>';
+        return;
+      }
+      container.innerHTML = list.map(c => `<div class="card shadow-sm mb-2 connection-card" onclick="connectTo('${c.id}')">
+        <div class="card-body py-2 d-flex justify-content-between align-items-center">
+          <div>
+            <strong>${escHtml(c.name)}</strong>
+            <div class="small text-muted">${escHtml(c.token)}</div>
+          </div>
+          <div>
+            <button class="btn btn-sm btn-outline-primary me-1" onclick="event.stopPropagation();showEditConnModal('${c.id}')" title="Modifier">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <i class="bi bi-chevron-right text-muted"></i>
+          </div>
+        </div>
+      </div>`).join('');
+    });
+}
+
+function addConnection() {
+  const name = document.getElementById('new-conn-name').value.trim();
+  const token = document.getElementById('new-conn-token').value.trim();
+  if (!name || !token) { showToast('Nom et token requis', 'warning'); return; }
+  const form = new FormData();
+  form.append('name', name);
+  form.append('token', token);
+  fetch('/api/connections/add', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.error);
+      document.getElementById('new-conn-name').value = '';
+      document.getElementById('new-conn-token').value = '';
+      showToast('Tricount ajout&eacute;', 'success');
+      loadConnections();
+    })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+function showEditConnModal(id) {
+  editingConnId = id;
+  fetch('/api/connections/list')
+    .then(r => r.json())
+    .then(data => {
+      const c = (data.connections || []).find(x => x.id == id);
+      if (!c) return;
+      document.getElementById('conn-edit-id').value = c.id;
+      document.getElementById('conn-edit-name').value = c.name;
+      document.getElementById('conn-edit-token').value = c.token;
+      connModal.show();
+    });
+}
+
+function saveEditConnection() {
+  const id = document.getElementById('conn-edit-id').value;
+  const name = document.getElementById('conn-edit-name').value.trim();
+  const token = document.getElementById('conn-edit-token').value.trim();
+  const form = new FormData();
+  form.append('id', id);
+  if (name) form.append('name', name);
+  if (token) form.append('token', token);
+  fetch('/api/connections/edit', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.error);
+      connModal.hide();
+      showToast('Tricount modifi&eacute;', 'success');
+      loadConnections();
+    })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+function deleteConnection() {
+  const id = document.getElementById('conn-edit-id').value;
+  if (!confirm('Supprimer ce tricount ?')) return;
+  const form = new FormData();
+  form.append('id', id);
+  fetch('/api/connections/delete', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.error);
+      connModal.hide();
+      showToast('Tricount supprim&eacute;', 'success');
+      loadConnections();
+    })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+function connectTo(id) {
+  showLoading('Connexion au tricount...');
+  fetch('/api/connections/list')
+    .then(r => r.json())
+    .then(data => {
+      const c = (data.connections || []).find(x => x.id == id);
+      if (!c) { hideLoading(); showToast('Tricount introuvable', 'error'); return; }
+      doConnect(c.token);
+    })
+    .catch(e => { hideLoading(); showToast(e.message, 'error'); });
+}
+
+function doConnect(token) {
+  const form = new FormData();
+  form.append('token', token);
+  fetch('/api/connect', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => {
+      hideLoading();
+      if (!ok) { showToast(data.error || 'Erreur', 'error'); return; }
+      currentData = data;
+      showConnected(data);
+      showToast('Connecté à ' + data.title, 'success');
+    })
+    .catch(e => { hideLoading(); showToast(e.message, 'error'); });
+}
+
+function backToConnections() {
+  document.getElementById('connect-screen').classList.remove('d-none');
+  document.getElementById('main-screen').classList.add('d-none');
+  loadConnections();
+}
+
+function disconnect() {
+  fetch('/api/disconnect', { method: 'POST' })
+    .then(() => backToConnections());
+}
+
+function showConnected(data) {
+  document.getElementById('connect-screen').classList.add('d-none');
+  document.getElementById('main-screen').classList.remove('d-none');
+  document.getElementById('tricount-title').textContent = data.title;
+  document.getElementById('tricount-currency').textContent = 'Devise: ' + data.currency;
+  currentData = data;
+  renderTransactions(data.transactions);
+  renderBalances(data.balances || {});
+  renderMembers(data.members);
+  renderRecurring();
+}
+
+// --- DIAGNOSTIC ---
+function runDiagnostic() {
+  const btn = document.querySelector('#connect-screen .btn-outline-warning');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>...';
+  const textDiv = document.getElementById('diagnostic-text');
+  document.getElementById('diagnostic-result').classList.remove('d-none');
+  textDiv.textContent = 'Test...';
+  fetch('/api/diagnostic')
+    .then(r => r.json())
+    .then(data => { textDiv.textContent = JSON.stringify(data, null, 2); showToast(data.auth_works ? 'API OK' : 'Problème API', data.auth_works ? 'success' : 'error'); })
+    .catch(e => { textDiv.textContent = e.message; showToast(e.message, 'error'); })
+    .finally(() => { btn.disabled = false; btn.innerHTML = '<i class="bi bi-wrench me-1"></i>Diagnostic réseau'; });
+}
+
+function debugToken() {
+  const token = document.getElementById('new-conn-token').value.trim();
+  if (!token) { showToast('Entrez d\'abord un token', 'warning'); return; }
+  const textDiv = document.getElementById('diagnostic-text');
+  document.getElementById('diagnostic-result').classList.remove('d-none');
+  textDiv.textContent = 'Test...';
+  fetch('/api/debug-token?token=' + encodeURIComponent(token))
+    .then(r => r.json())
+    .then(data => { textDiv.textContent = JSON.stringify(data, null, 2); if (data.lookup_status === 200) showToast('Token valide', 'success'); else if (data.lookup_status === 404) showToast('Token invalide', 'error'); })
+    .catch(e => { textDiv.textContent = e.message; showToast(e.message, 'error'); });
+}
+
+// --- DATA ---
+function refreshData() {
+  showLoading('Rafraîchissement...');
+  fetch('/api/data')
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => {
+      hideLoading();
+      if (!ok) { showToast(data.error || 'Erreur', 'error'); return; }
+      document.getElementById('tricount-title').textContent = data.title;
+      document.getElementById('tricount-currency').textContent = 'Devise: ' + data.currency;
+      currentData = data;
+      renderTransactions(data.transactions);
+      renderBalances(data.balances);
+      renderMembers(data.members);
+      renderRecurring();
+    })
+    .catch(e => { hideLoading(); showToast(e.message, 'error'); });
+}
+
+function renderTransactions(transactions) {
+  const container = document.getElementById('transactions-list');
+  if (!transactions || transactions.length === 0) {
+    container.innerHTML = '<div class="text-muted text-center py-4">Aucune d&eacute;pense</div>'; return;
+  }
+  container.innerHTML = transactions.map(tx => {
+    const isExpense = tx.type === 'NORMAL';
+    const sign = isExpense ? '-' : '+';
+    const color = isExpense ? '' : 'text-success';
+    const date = tx.date ? new Date(tx.date + 'T00:00:00').toLocaleDateString('fr-FR') : '—';
+    const allocs = tx.allocations.map(a => a.name + ': ' + a.amount.toFixed(2)).join(' | ');
+    return `<button class="list-group-item list-group-item-action" onclick="showEditTxModal('${tx.uuid}')">
+      <div class="d-flex w-100 justify-content-between align-items-start">
+        <div>
+          <strong>${escHtml(tx.description)}</strong>
+          <div class="small text-muted">${date} &middot; ${escHtml(tx.payer_name)}</div>
+          <div class="small text-muted"><i class="bi bi-people me-1"></i>${escHtml(allocs)}</div>
+        </div>
+        <div class="text-end">
+          <span class="fs-5 fw-bold ${color}">${sign}${tx.abs_amount.toFixed(2)}</span>
+           ${tx.category_label ? '<div class="small text-muted">' + escHtml(tx.category_label) + '</div>' : ''}
+        </div>
+      </div>
+    </button>`;
+  }).join('');
+}
+
+function renderBalances(balances) {
+  const container = document.getElementById('balances-list');
+  if (!balances || Object.keys(balances).length === 0) {
+    container.innerHTML = '<div class="text-muted text-center py-4">Aucune balance</div>'; return;
+  }
+  container.innerHTML = Object.entries(balances)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, bal]) => {
+      let color, icon, text;
+      if (bal > 0) { color = 'text-success'; icon = 'bi-arrow-up-circle'; text = 'à recevoir'; }
+      else if (bal < 0) { color = 'text-danger'; icon = 'bi-arrow-down-circle'; text = 'à payer'; }
+      else { color = 'text-muted'; icon = 'bi-check-circle'; text = 'en règle'; }
+      return `<div class="list-group-item"><div class="d-flex w-100 justify-content-between">
+        <span><i class="bi ${icon} me-2 ${color}"></i>${escHtml(name)}</span>
+        <span class="fw-bold ${color}">${bal > 0 ? '+' : ''}${bal.toFixed(2)} <small>${text}</small></span>
+      </div></div>`;
+    }).join('');
+}
+
+function renderMembers(members) {
+  const container = document.getElementById('members-list');
+  if (!members || members.length === 0) {
+    container.innerHTML = '<div class="text-muted text-center py-4">Aucun membre</div>'; return;
+  }
+  container.innerHTML = members.map(m => `<div class="list-group-item d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-person me-2"></i>${escHtml(m.name)}</span>
+    <div>
+      <button class="btn btn-sm btn-outline-primary me-1" onclick="showRenameModal('${m.uuid}','${escHtml(m.name)}')"><i class="bi bi-pencil"></i></button>
+      <button class="btn btn-sm btn-outline-danger" onclick="deleteMember('${m.uuid}')"><i class="bi bi-person-x"></i></button>
+    </div>
+  </div>`).join('');
+}
+
+function renderRecurring() {
+  fetch('/api/recurring/list')
+    .then(r => r.json())
+    .then(data => {
+      const container = document.getElementById('recurring-list');
+      const recs = data.recurring || [];
+      if (recs.length === 0) { container.innerHTML = '<div class="text-muted text-center py-4">Aucune</div>'; return; }
+      const freqLabels = { daily: 'Quotidien', weekly: 'Hebdomadaire', biweekly: 'Bi-hebdo', monthly: 'Mensuel' };
+      const weekdayLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+      container.innerHTML = recs.map(r => {
+        const active = r.is_active ? '' : 'text-muted opacity-50';
+        const nextDate = new Date(r.next_run_date + 'T00:00:00').toLocaleDateString('fr-FR');
+        let schedule = freqLabels[r.frequency] || r.frequency;
+        if (r.frequency === 'weekly' || r.frequency === 'biweekly') {
+          if (r.day_of_week !== null && r.day_of_week !== undefined) schedule += ' (' + (weekdayLabels[r.day_of_week] || '?') + ')';
+        } else if (r.frequency === 'monthly' && r.day_of_month !== null && r.day_of_month !== undefined) {
+          schedule += ' (jour ' + r.day_of_month + ')';
+        }
+        if (r.interval_count > 1) schedule += ' x' + r.interval_count;
+        return `<button class="list-group-item list-group-item-action ${active}" onclick="showEditRecurringModal(${r.id})">
+          <div class="d-flex w-100 justify-content-between align-items-start">
+            <div>
+              <strong>${escHtml(r.description)}</strong>
+              <div class="small text-muted">${r.amount.toFixed(2)} &middot; ${schedule}</div>
+              <div class="small text-muted">Prochaine: ${nextDate}</div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <div class="form-check form-switch mb-0" onclick="event.stopPropagation()">
+                <input class="form-check-input" type="checkbox" role="switch" ${r.is_active ? 'checked' : ''} onchange="toggleRecurring(${r.id}, this.checked)">
+              </div>
+              ${r.is_active ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>'}
+            </div>
+          </div>
+        </button>`;
+      }).join('');
+    });
+}
+
+// --- TRANSACTION MODAL ---
+function populateMemberSelect(selectId, excludeId) {
+  const select = document.getElementById(selectId);
+  select.innerHTML = currentData.members.filter(m => !excludeId || m.uuid !== excludeId).map(m => `<option value="${m.uuid}">${escHtml(m.name)}</option>`).join('');
+}
+
+function toggleSplitMode() {
+  const mode = document.getElementById('tx-split-mode').value;
+  document.getElementById('tx-participants-block').style.display = mode === 'equal' ? 'block' : 'none';
+  document.getElementById('tx-receiver-block').style.display = mode === 'reimbursement' ? 'block' : 'none';
+  if (mode === 'reimbursement') populateMemberSelect('tx-receiver');
+}
+
+function toggleRecSplitMode() {
+  const mode = document.getElementById('rec-split-mode').value;
+  document.getElementById('rec-participants-block').style.display = mode === 'equal' ? 'block' : 'none';
+}
+
+function toggleRecFrequency() {
+  const freq = document.getElementById('rec-frequency').value;
+  document.getElementById('rec-day-of-week-block').style.display = (freq === 'weekly' || freq === 'biweekly') ? 'block' : 'none';
+  document.getElementById('rec-day-of-month-block').style.display = freq === 'monthly' ? 'block' : 'none';
+}
+
+function populateDayOfMonth() {
+  const sel = document.getElementById('rec-day-of-month');
+  sel.innerHTML = '';
+  for (let i = 1; i <= 31; i++) {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = i + (i === 1 ? 'er' : '');
+    sel.appendChild(opt);
+  }
+}
+
+function buildParticipants(prefix) {
+  const container = document.getElementById(prefix + 'participants-list');
+  if (!container) return;
+  container.innerHTML = currentData.members.map(m =>
+    `<div class="form-check form-check-inline">
+      <input class="form-check-input participant-check" type="checkbox" data-uuid="${m.uuid}" id="${prefix}p-${m.uuid}" checked>
+      <label class="form-check-label" for="${prefix}p-${m.uuid}">${escHtml(m.name)}</label>
+    </div>`
+  ).join('');
+}
+
+function getSelectedParticipants(prefix) {
+  const checks = document.querySelectorAll('#' + prefix + 'participants-list .participant-check');
+  return Array.from(checks).filter(c => c.checked).map(c => c.getAttribute('data-uuid'));
+}
+
+function showAddTxModal() {
+  document.getElementById('txModalTitle').textContent = 'Nouvelle dépense';
+  document.getElementById('tx-save-label').textContent = 'Ajouter';
+  document.getElementById('tx-edit-id').value = '';
+  document.getElementById('tx-delete-btn').classList.add('d-none');
+  document.getElementById('tx-description').value = '';
+  document.getElementById('tx-amount').value = '';
+  document.getElementById('tx-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('tx-category').value = '';
+  document.getElementById('tx-split-mode').value = 'equal';
+  populateMemberSelect('tx-payer');
+  buildParticipants('tx-');
+  toggleSplitMode();
+  txModal.show();
+}
+
+function showEditTxModal(txUuid) {
+  const tx = currentData.transactions.find(t => t.uuid === txUuid);
+  if (!tx) return;
+  document.getElementById('txModalTitle').textContent = 'Modifier la dépense';
+  document.getElementById('tx-save-label').textContent = 'Enregistrer';
+  document.getElementById('tx-edit-id').value = tx.id;
+  document.getElementById('tx-delete-btn').classList.remove('d-none');
+  document.getElementById('tx-description').value = tx.description;
+  document.getElementById('tx-amount').value = tx.abs_amount;
+  document.getElementById('tx-date').value = tx.date;
+  document.getElementById('tx-category').value = tx.category || '';
+  document.getElementById('tx-split-mode').value = 'equal';
+  populateMemberSelect('tx-payer');
+  document.getElementById('tx-payer').value = tx.payer_uuid;
+  buildParticipants('tx-');
+  toggleSplitMode();
+  // Pre-check only participants from the original allocations
+  const allocUuids = new Set((tx.allocations || []).map(a => a.uuid));
+  document.querySelectorAll('#tx-participants-list .participant-check').forEach(c => {
+    c.checked = allocUuids.has(c.getAttribute('data-uuid'));
+  });
+  txModal.show();
+}
+
+function saveTx() {
+  const editId = document.getElementById('tx-edit-id').value;
+  const description = document.getElementById('tx-description').value.trim();
+  const amount = document.getElementById('tx-amount').value;
+  const payerUuid = document.getElementById('tx-payer').value;
+  const category = document.getElementById('tx-category').value;
+  const txDate = document.getElementById('tx-date').value;
+  const splitMode = document.getElementById('tx-split-mode').value;
+  if (!description) { showToast('Description requise', 'warning'); return; }
+  if (!amount || parseFloat(amount) <= 0) { showToast('Montant invalide', 'warning'); return; }
+  const form = new FormData();
+  form.append('description', description); form.append('amount', amount); form.append('payer_uuid', payerUuid);
+  form.append('category', category); form.append('date', txDate); form.append('split_mode', splitMode);
+  if (splitMode === 'equal') {
+    form.append('split_members', JSON.stringify(getSelectedParticipants('tx-')));
+  }
+  if (splitMode === 'reimbursement') form.append('receiver_uuid', document.getElementById('tx-receiver').value);
+  const url = editId ? '/api/transaction/edit' : '/api/transaction/create';
+  if (editId) form.append('transaction_id', editId);
+  fetch(url, { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.error);
+      txModal.hide();
+      currentData.transactions = data.transactions; currentData.balances = data.balances;
+      renderTransactions(data.transactions); renderBalances(data.balances);
+      showToast(editId ? 'Dépense modifiée' : 'Dépense ajoutée', 'success');
+    })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+function deleteTx() {
+  const txId = document.getElementById('tx-edit-id').value;
+  if (!confirm('Supprimer cette dépense ?')) return;
+  const form = new FormData(); form.append('transaction_id', txId);
+  fetch('/api/transaction/delete', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => {
+      if (!ok) throw new Error(data.error);
+      txModal.hide(); currentData.transactions = data.transactions; currentData.balances = data.balances;
+      renderTransactions(data.transactions); renderBalances(data.balances);
+      showToast('Dépense supprimée', 'success');
+    })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+// --- MEMBERS ---
+function showAddMemberModal() { memberModal.show(); }
+function addMembers() {
+  const names = document.getElementById('member-names').value.trim();
+  if (!names) { showToast('Entrez au moins un nom', 'warning'); return; }
+  const form = new FormData(); form.append('names', names);
+  fetch('/api/members/add', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => { if (!ok) throw new Error(data.error); memberModal.hide(); document.getElementById('member-names').value = ''; currentData.members = data.members; renderMembers(data.members); showToast('Membre(s) ajouté(s)', 'success'); })
+    .catch(e => showToast(e.message, 'error'));
+}
+function showRenameModal(uuid, name) { document.getElementById('rename-uuid').value = uuid; document.getElementById('rename-name').value = name; renameModal.show(); }
+function renameMember() {
+  const uuid = document.getElementById('rename-uuid').value; const newName = document.getElementById('rename-name').value.trim();
+  if (!newName) { showToast('Nom requis', 'warning'); return; }
+  const form = new FormData(); form.append('member_uuid', uuid); form.append('new_name', newName);
+  fetch('/api/members/rename', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => { if (!ok) throw new Error(data.error); renameModal.hide(); currentData.members = data.members; renderMembers(data.members); showToast('Membre renommé', 'success'); })
+    .catch(e => showToast(e.message, 'error'));
+}
+function deleteMember(uuid) {
+  if (!confirm('Supprimer ce membre ? (ne fonctionne que s\'il n\'a pas de transactions)')) return;
+  const form = new FormData(); form.append('member_uuid', uuid);
+  fetch('/api/members/delete', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => { if (!ok) throw new Error(data.error); currentData.members = data.members; renderMembers(data.members); showToast('Membre supprimé', 'success'); })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+// --- RECURRING ---
+function showAddRecurringModal() {
+  document.getElementById('recModalTitle').textContent = 'Nouvelle dépense récurrente';
+  document.getElementById('rec-save-label').textContent = 'Ajouter';
+  document.getElementById('rec-edit-id').value = ''; document.getElementById('rec-delete-btn').classList.add('d-none');
+  document.getElementById('rec-description').value = ''; document.getElementById('rec-amount').value = '';
+  document.getElementById('rec-start-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('rec-frequency').value = 'monthly'; document.getElementById('rec-interval').value = '1';
+  document.getElementById('rec-category').value = ''; document.getElementById('rec-split-mode').value = 'equal';
+  editingRecurringId = null; populateMemberSelect('rec-payer');
+  populateDayOfMonth(); toggleRecFrequency(); toggleRecSplitMode();
+  buildParticipants('rec-'); recurringModal.show();
+}
+
+function showEditRecurringModal(recId) {
+  fetch('/api/recurring/list').then(r => r.json()).then(data => {
+    const rec = (data.recurring || []).find(r => r.id === recId);
+    if (!rec) { showToast('Introuvable', 'error'); return; }
+    document.getElementById('recModalTitle').textContent = 'Modifier'; document.getElementById('rec-save-label').textContent = 'Enregistrer';
+    document.getElementById('rec-edit-id').value = rec.id; document.getElementById('rec-delete-btn').classList.remove('d-none');
+    document.getElementById('rec-description').value = rec.description; document.getElementById('rec-amount').value = rec.amount;
+    document.getElementById('rec-start-date').value = rec.next_run_date; document.getElementById('rec-frequency').value = rec.frequency;
+    document.getElementById('rec-interval').value = rec.interval_count; document.getElementById('rec-category').value = rec.category || '';
+    document.getElementById('rec-split-mode').value = rec.split_mode; editingRecurringId = rec.id;
+    populateMemberSelect('rec-payer'); document.getElementById('rec-payer').value = rec.payer_uuid;
+    populateDayOfMonth(); toggleRecFrequency(); toggleRecSplitMode();
+    buildParticipants('rec-');
+    if (rec.day_of_week !== null && rec.day_of_week !== undefined) document.getElementById('rec-day-of-week').value = rec.day_of_week;
+    if (rec.day_of_month !== null && rec.day_of_month !== undefined) document.getElementById('rec-day-of-month').value = rec.day_of_month;
+    if (rec.split_members) {
+      const memberSet = new Set(rec.split_members);
+      document.querySelectorAll('#rec-participants-list .participant-check').forEach(c => {
+        c.checked = memberSet.has(c.getAttribute('data-uuid'));
+      });
+    }
+    recurringModal.show();
+  }).catch(e => showToast(e.message, 'error'));
+}
+
+function saveRecurring() {
+  const editId = document.getElementById('rec-edit-id').value;
+  const description = document.getElementById('rec-description').value.trim();
+  const amount = document.getElementById('rec-amount').value;
+  const payerUuid = document.getElementById('rec-payer').value;
+  const frequency = document.getElementById('rec-frequency').value;
+  const intervalCount = document.getElementById('rec-interval').value;
+  const category = document.getElementById('rec-category').value;
+  const startDate = document.getElementById('rec-start-date').value;
+  const splitMode = document.getElementById('rec-split-mode').value;
+  if (!description) { showToast('Description requise', 'warning'); return; }
+  if (!amount || parseFloat(amount) <= 0) { showToast('Montant invalide', 'warning'); return; }
+  const form = new FormData();
+  form.append('description', description); form.append('amount', amount); form.append('payer_uuid', payerUuid);
+  form.append('frequency', frequency); form.append('interval_count', intervalCount);
+  form.append('category', category); form.append('start_date', startDate); form.append('split_mode', splitMode);
+  if (frequency === 'weekly' || frequency === 'biweekly') form.append('day_of_week', document.getElementById('rec-day-of-week').value);
+  if (frequency === 'monthly') form.append('day_of_month', document.getElementById('rec-day-of-month').value);
+  if (splitMode === 'equal') {
+    form.append('split_members', JSON.stringify(getSelectedParticipants('rec-')));
+  }
+  const url = editId ? '/api/recurring/edit' : '/api/recurring/create';
+  if (editId) form.append('recurring_id', editId);
+  fetch(url, { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => { if (!ok) throw new Error(data.error); recurringModal.hide(); renderRecurring(); showToast(editId ? 'Modifiée' : 'Ajoutée', 'success'); })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+function toggleRecurring(recId, active) {
+  const form = new FormData();
+  form.append('recurring_id', recId);
+  form.append('is_active', active ? '1' : '0');
+  fetch('/api/recurring/edit', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => { if (!ok) throw new Error(data.error); renderRecurring(); showToast(active ? 'Activée' : 'Désactivée', 'success'); })
+    .catch(e => showToast(e.message, 'error'));
+}
+
+function deleteRecurring() {
+  const recId = document.getElementById('rec-edit-id').value;
+  if (!confirm('Supprimer ?')) return;
+  const form = new FormData(); form.append('recurring_id', recId);
+  fetch('/api/recurring/delete', { method: 'POST', body: form })
+    .then(r => r.json().then(d => ({ ok: r.ok, data: d })))
+    .then(({ ok, data }) => { if (!ok) throw new Error(data.error); recurringModal.hide(); renderRecurring(); showToast('Supprimée', 'success'); })
+    .catch(e => showToast(e.message, 'error'));
+}
+</script>
+</body>
+</html>

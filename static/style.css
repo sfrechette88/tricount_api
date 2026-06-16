@@ -1,0 +1,77 @@
+body {
+  background: #1a1d21;
+  min-height: 100vh;
+}
+
+#connect-screen {
+  min-height: 80vh;
+  align-items: center;
+}
+
+.card {
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.list-group-item {
+  background: #212529;
+  border-color: rgba(255,255,255,0.08);
+  transition: background 0.15s;
+}
+
+.list-group-item:hover {
+  background: #2a2e33;
+}
+
+.nav-tabs .nav-link {
+  color: #adb5bd;
+  border: none;
+  padding: 0.5rem 1rem;
+}
+
+.nav-tabs .nav-link.active {
+  color: #fff;
+  background: transparent;
+  border-bottom: 2px solid #0d6efd;
+}
+
+.tab-pane {
+  display: none;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+.toast.bg-danger, .toast.bg-success, .toast.bg-warning {
+  color: #fff;
+}
+
+.toast.bg-danger .btn-close,
+.toast.bg-success .btn-close,
+.toast.bg-warning .btn-close {
+  filter: invert(1);
+}
+
+.form-control, .form-select {
+  background: #2a2e33;
+  border-color: rgba(255,255,255,0.12);
+  color: #f8f9fa;
+}
+
+.form-control:focus, .form-select:focus {
+  background: #2a2e33;
+  border-color: #0d6efd;
+  color: #f8f9fa;
+  box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.25);
+}
+
+.btn-outline-secondary {
+  border-color: rgba(255,255,255,0.12);
+  color: #adb5bd;
+}
+
+.btn-outline-secondary:hover {
+  background: #2a2e33;
+  border-color: rgba(255,255,255,0.2);
+  color: #fff;
+}

@@ -1,0 +1,13 @@
+services:
+  tricount-api:
+    build: .
+    container_name: tricount-api
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATA_DIR=/app/data
+      - FLASK_DEBUG=0
+      - TZ=Europe/Paris
+    restart: unless-stopped
