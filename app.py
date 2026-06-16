@@ -12,6 +12,8 @@ from flask import (
     session, redirect, url_for, flash, Response
 )
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 from tricount_manager import TricountManager
 from recurring_manager import RecurringManager
 from connection_manager import ConnectionManager
@@ -21,6 +23,8 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.debug = DEBUG
 app.permanent_session_lifetime = timedelta(days=PERMANENT_SESSION_LIFETIME_DAYS)
+
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 manager = TricountManager()
 rec_manager = RecurringManager()
