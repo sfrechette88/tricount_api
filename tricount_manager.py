@@ -1,6 +1,6 @@
 from pathlib import Path
 from datetime import datetime
-from tricount import load_client, Category
+from tricount import load_client, Category, TransactionStatus
 from config import CREDENTIALS_PATH
 
 
@@ -52,8 +52,21 @@ class TricountManager:
     def get_balances(self):
         if not self.tricount:
             return {}
-        client = self.get_client()
-        return client.get_balances(self.tricount)
+        balances = {m.display_name: 0.0 for m in self.tricount.members}
+        for tx in self.tricount.transactions:
+            if tx.status != TransactionStatus.ACTIVE:
+                continue
+            payer = self.tricount.get_member_by_uuid(tx.membership_uuid_owner)
+            if not payer:
+                continue
+            # tx.amount.value is negative for expenses/reimbursements, positive for income
+            tx_amt = float(tx.amount.value)
+            balances[payer.display_name] -= tx_amt
+            for alloc in tx.allocations:
+                member = self.tricount.get_member_by_uuid(alloc.membership_uuid)
+                if member:
+                    balances[member.display_name] += float(alloc.amount.value)
+        return balances
 
     def create_transaction(self, description, amount, payer, split_among, category=None, date=None):
         client = self.get_client()
