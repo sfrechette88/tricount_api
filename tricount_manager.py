@@ -1,6 +1,6 @@
 from pathlib import Path
 from datetime import datetime
-from tricount import load_client, Category, TransactionStatus
+from tricount import load_client, Category, TransactionStatus, AllocationType
 from config import CREDENTIALS_PATH
 
 
@@ -62,10 +62,27 @@ class TricountManager:
             # tx.amount.value is negative for expenses/reimbursements, positive for income
             tx_amt = float(tx.amount.value)
             balances[payer.display_name] -= tx_amt
-            for alloc in tx.allocations:
-                member = self.tricount.get_member_by_uuid(alloc.membership_uuid)
-                if member:
-                    balances[member.display_name] += float(alloc.amount.value)
+
+            active_allocs = [
+                a for a in tx.allocations
+                if a.allocation_type == AllocationType.RATIO or abs(float(a.amount.value)) > 0
+            ]
+            ratio_allocs = [
+                a for a in active_allocs
+                if a.allocation_type == AllocationType.RATIO and (a.share_ratio is not None and a.share_ratio > 0)
+            ]
+
+            if len(ratio_allocs) == len(active_allocs) and len(ratio_allocs) > 0:
+                tot_ratio = sum(a.share_ratio for a in ratio_allocs)
+                for a in ratio_allocs:
+                    member = self.tricount.get_member_by_uuid(a.membership_uuid)
+                    if member:
+                        balances[member.display_name] += tx_amt * (a.share_ratio / tot_ratio)
+            else:
+                for a in tx.allocations:
+                    member = self.tricount.get_member_by_uuid(alloc.membership_uuid if (alloc := a) else None)
+                    if member:
+                        balances[member.display_name] += float(a.amount.value)
         return balances
 
     def create_transaction(self, description, amount, payer, split_among, category=None, date=None):
